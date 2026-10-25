@@ -1,23 +1,21 @@
-const { GObject, Clutter, GLib, St, PangoCairo, Pango } = imports.gi;
+import GObject from 'gi://GObject';
+import Clutter from 'gi://Clutter';
+import Cogl from 'gi://Cogl';
+import GLib from 'gi://GLib';
+import St from 'gi://St';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const Cairo			 = imports.cairo;
-const ExtensionUtils = imports.misc.extensionUtils;
-const Main			 = imports.ui.main;
-const PanelMenu		 = imports.ui.panelMenu;
-const PopupMenu		 = imports.ui.popupMenu;
-const Me			 = imports.misc.extensionUtils.getCurrentExtension();
-
-const Gettext = imports.gettext.domain(Me.metadata['gettext-domain']);
-const _		  = Gettext.gettext;
+import {xClock} from './Clock.js';
 
 const debug = false;
 //~ const debug = true;
 function lg(s) {
-	if (debug) log("===" + Me.metadata['gettext-domain'] + "===>" + s);
+	if (debug) log("===cairo-clock===>" + s);
 }
 
-const xClock	 = Me.imports.Clock.xClock;
-const size	 = parseInt(Main.layoutManager.primaryMonitor.height/4);
+let size		 = 400;
 let xc			 = null;
 let pop_per_hour = false;  //整点弹出报时。
 let pt			 = null;
@@ -38,13 +36,13 @@ const Indicator = GObject.registerClass(
 			xc.reactive = true;
 
 			this.width			  = 50;
-			this.background_color = Clutter.Color.from_string("#80808000")[1];
+			this.background_color = Cogl.Color.from_string("#80808000")[1];
 			this.connect("button-press-event", (actor, event) => {
 				const altkey  = event.get_state() & Clutter.ModifierType.MOD1_MASK;
 				const ctrlkey = event.get_state() & Clutter.ModifierType.CONTROL_MASK;
 				if (altkey) {
 					pop_per_hour		  = !pop_per_hour;
-					this.background_color = Clutter.Color.from_string(pop_per_hour ? "#C98A38" : "#80808000")[1];
+					this.background_color = Cogl.Color.from_string(pop_per_hour ? "#C98A38" : "#80808000")[1];
 					return Clutter.EVENT_STOP;
 				}
 				if (ctrlkey) {
@@ -115,14 +113,9 @@ const Indicator = GObject.registerClass(
 
 let timeoutId = null;
 
-class Extension {
-	constructor(uuid) {
-		this._uuid = uuid;
-
-		ExtensionUtils.initTranslations();
-	}
-
+export default class CairoClockExtension extends Extension {
 	enable() {
+		size = parseInt(Main.layoutManager.primaryMonitor.height / 4);
 		timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 10, () => {
 			const [h, m] = xc.get_alarm();
 			const d0	 = new Date();
@@ -142,7 +135,7 @@ class Extension {
 		});
 		lg("start");
 		this._indicator = new Indicator();
-		Main.panel.addToStatusArea(this._uuid, this._indicator);
+		Main.panel.addToStatusArea(this.uuid, this._indicator);
 	}
 
 	disable() {
@@ -153,9 +146,7 @@ class Extension {
 		lg("stop");
 		this._indicator.destroy();
 		this._indicator = null;
+		xc = null;
+		pop_per_hour = false;
 	}
-}
-
-function init(meta) {
-	return new Extension(meta.uuid);
 }

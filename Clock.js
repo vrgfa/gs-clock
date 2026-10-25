@@ -1,6 +1,11 @@
-const { Clutter, GObject, GLib, PangoCairo, Pango } = imports.gi;
+import Clutter from 'gi://Clutter';
+import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
+import St from 'gi://St';
+import PangoCairo from 'gi://PangoCairo';
+import Pango from 'gi://Pango';
+import Cairo from 'cairo';
 
-const Cairo		 = imports.cairo;
 let size		 = 400;
 let alarm_h		 = null;
 let alarm_m		 = null;
@@ -10,16 +15,16 @@ let rotate_angle = 0;
 let timeoutClock = null;
 //~ let effect = 0;
 
-var xClock = GObject.registerClass(
+export const xClock = GObject.registerClass(
 	{
 		Properties : {},
 		Signals : {}
 	},
-	class xClock extends Clutter.Actor {
+	class xClock extends St.DrawingArea {
 		_init(x) {
-			super._init();
-
 			if (x) size = x;
+			super._init({ width : size, height : size });
+
 			MAX		 = size / 2 - size / 12;
 			MIN		 = size / 10;
 			this.hover_degree = 0;
@@ -27,12 +32,7 @@ var xClock = GObject.registerClass(
 			this.IsCenter	  = false;
 			this.alarm_active = false;
 
-			this._canvas = new Clutter.Canvas();
-			this._canvas.connect('draw', this.on_draw.bind(this));
-			this._canvas.invalidate();
-			this._canvas.set_size(size, size);
-			this.set_size(size, size);
-			this.set_content(this._canvas);
+			this.connect('repaint', this.on_draw.bind(this));
 			this.reactive = true;
 			this.connect("motion-event", this.hover.bind(this));
 			this.connect("button-press-event", this.click.bind(this));
@@ -52,7 +52,7 @@ var xClock = GObject.registerClass(
 			if (distant > MAX) {
 				this.IsCenter = false;
 				this.hover_degree = 0;
-				this._canvas.invalidate();
+				this.queue_repaint();
 				return false;
 			}
 			this.IsCenter = distant > MIN ? false : true;
@@ -65,7 +65,7 @@ var xClock = GObject.registerClass(
 
 		hover(actor, event) {
 			if (!this.get_coords() || this.alarm_active) return Clutter.EVENT_STOP;
-			this._canvas.invalidate();
+			this.queue_repaint();
 			return Clutter.EVENT_STOP;
 		}
 
@@ -73,7 +73,7 @@ var xClock = GObject.registerClass(
 			if (event.get_button() == 3) {	//右键隐藏
 				this.visible	  = false;
 				this.hover_degree = 0;
-				this._canvas.invalidate();
+				this.queue_repaint();
 				return Clutter.EVENT_STOP;
 			}
 			if (!this.IsCenter) {
@@ -87,7 +87,7 @@ var xClock = GObject.registerClass(
 				alarm_h = null;
 				alarm_m = null;
 			}
-			this._canvas.invalidate();
+			this.queue_repaint();
 			return Clutter.EVENT_STOP;
 		}
 
@@ -129,11 +129,13 @@ var xClock = GObject.registerClass(
 		}
 
 		setcolor(ctx, colorstr, alpha) {
-			const [, cc] = Clutter.Color.from_string(colorstr);
+			const cc = new Pango.Color();	// Clutter.Color 在 GNOME 47 移除，Cogl.Color 不认颜色名。
+			cc.parse(colorstr);
 			ctx.setSourceRGBA(cc.red, cc.green, cc.blue, alpha);
 		}
 
-		on_draw(canvas, ctx, width, height) {
+		on_draw(area) {
+			const ctx = area.get_context();
 			const back_color = "light gray";
 			const hand_color = 'black';
 
@@ -206,7 +208,7 @@ var xClock = GObject.registerClass(
 
 				ctx.moveTo(0, size / 4);
 				const [ah, am] = this.degree2time(this.hover_degree);
-				this.align_show(ctx, '%02s : %02s'.format(ah, am));
+				this.align_show(ctx, this.pad2(ah, am));
 			} else {
 				let ampm = "PM";
 				if (h0 >= 12) h0 -= 12;
@@ -214,7 +216,7 @@ var xClock = GObject.registerClass(
 
 				this.setcolor(ctx, 'black', 1);
 				ctx.moveTo(0, size / 6);
-				this.align_show(ctx, '%02s : %02s'.format(h0, m0));
+				this.align_show(ctx, this.pad2(h0, m0));
 				ctx.moveTo(0, size / 12);
 				this.align_show(ctx, ampm);
 			}
@@ -223,7 +225,7 @@ var xClock = GObject.registerClass(
 			// *gray show white. darkgreen show green. strange.
 			ctx.moveTo(0, -size / 5);
 			const [ah, am] = this.degree2time(this.alarm_degree);
-			this.align_show(ctx, '%02s : %02s'.format(ah, am));
+			this.align_show(ctx, this.pad2(ah, am));
 
 			ctx.moveTo(0, 0);
 			this.draw_line(ctx, "white", size / 25, this.alarm_degree * Math.PI / 180, -Math.floor(size / 4));	//闹铃，30度1小时
@@ -236,6 +238,10 @@ var xClock = GObject.registerClass(
 			ctx.arc(0, 0, size / 33, 0, 2 * Math.PI);
 			ctx.fill();
 			ctx.$dispose();	 // 释放context，有用？
+		}
+
+		pad2(a, b) {
+			return `${String(a).padStart(2, '0')} : ${String(b).padStart(2, '0')}`;
 		}
 
 		degree2time(degree) {
@@ -264,7 +270,7 @@ var xClock = GObject.registerClass(
 					max_angle--;
 				} else
 					cnt += direct;	// 转向时，停止一次变动，更加柔和。
-				this._canvas.invalidate();
+				this.queue_repaint();
 				return GLib.SOURCE_CONTINUE;
 			});
 		}
@@ -274,5 +280,6 @@ var xClock = GObject.registerClass(
 				GLib.Source.remove(timeoutClock);
 				timeoutClock = null;
 			}
+			super.destroy();
 		}
 	});
